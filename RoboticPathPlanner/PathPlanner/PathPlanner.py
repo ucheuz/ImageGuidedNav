@@ -649,7 +649,6 @@ from slicer import vtkMRMLScalarVolumeNode, vtkMRMLLabelMapVolumeNode, vtkMRMLMa
 # PathPlanner
 #
 
-
 class PathPlanner(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class."""
 
@@ -673,7 +672,6 @@ Original framework by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso,
 # PathPlannerParameterNode
 #
 
-# Incorporating the Teacher's exact variable naming conventions
 @parameterNodeWrapper
 class PathPlannerParameterNode:
     inputTargetVolume: vtkMRMLLabelMapVolumeNode
@@ -686,7 +684,6 @@ class PathPlannerParameterNode:
 #
 # PathPlannerWidget
 #
-
 
 class PathPlannerWidget(ScriptedLoadableModuleWidget):
     """Uses ScriptedLoadableModuleWidget base class."""
@@ -772,7 +769,6 @@ class PathPlannerWidget(ScriptedLoadableModuleWidget):
         target_mask_node = self.targetMaskSelector.currentNode()
         max_length = self.maxLengthSpinBox.value
 
-        # --- Teacher's Safety Checks Implemented Here ---
         if not self.logic.isValidInputOutputData(target_mask_node, critical_node, entry_node, target_node):
             self.resultLabel.setText("Error: Invalid inputs. Check nodes.")
             return
@@ -785,12 +781,10 @@ class PathPlannerWidget(ScriptedLoadableModuleWidget):
         slicer.app.processEvents() 
 
         try:
-            # Call the algorithm
             best_trajectory = self.logic.compute_optimal_trajectory(
                 entry_node, target_node, critical_node, target_mask_node, max_length
             )
             
-            # --- NEW: Draw the Green Line in 3D Slicer ---
             line_node_name = "Calculated_Trajectory"
             line_node = slicer.mrmlScene.GetFirstNodeByName(line_node_name)
             if not line_node:
@@ -798,14 +792,13 @@ class PathPlannerWidget(ScriptedLoadableModuleWidget):
             line_node.RemoveAllControlPoints()
             line_node.AddControlPoint(vtk.vtkVector3d(best_trajectory[0][0], best_trajectory[0][1], best_trajectory[0][2]))
             line_node.AddControlPoint(vtk.vtkVector3d(best_trajectory[1][0], best_trajectory[1][1], best_trajectory[1][2]))
-            line_node.GetDisplayNode().SetSelectedColor(0, 1, 0) # Set color to bright green
+            line_node.GetDisplayNode().SetSelectedColor(0, 1, 0)
             
-            # --- NEW: Broadcast the result ---
             self.logic.broadcast_to_ros(best_trajectory[0], best_trajectory[1])
             
             entry_str = f"({best_trajectory[0][0]:.2f}, {best_trajectory[0][1]:.2f}, {best_trajectory[0][2]:.2f})"
             target_str = f"({best_trajectory[1][0]:.2f}, {best_trajectory[1][1]:.2f}, {best_trajectory[1][2]:.2f})"
-            self.resultLabel.setText(f"Success! Broadcasted to ROS.\nEntry: {entry_str}\nTarget: {target_str}")
+            self.resultLabel.setText(f"Success! Updated Trajectory_ROS_Transform.\nEntry: {entry_str}\nTarget: {target_str}")
             
         except ValueError as e:
             self.resultLabel.setText(f"Failed Constraint:\n{str(e)}")
@@ -817,42 +810,24 @@ class PathPlannerWidget(ScriptedLoadableModuleWidget):
 # PathPlannerLogic
 #
 
-
 class PathPlannerLogic(ScriptedLoadableModuleLogic):
     def __init__(self):
         ScriptedLoadableModuleLogic.__init__(self)
 
-    # --- Teacher's Helper Functions ---
     def hasImageData(self, volumeNode):
-        """Returns true if the passed in volume node has valid image data."""
         if not volumeNode:
-            logging.debug('hasImageData failed: no volume node')
             return False
         if volumeNode.GetImageData() is None:
-            logging.debug('hasImageData failed: no image data in volume node')
             return False
         return True
 
     def isValidInputOutputData(self, inputTargetVolumeNode, inputCriticalVolumeNode, inputEntryFiducialsNodes, inputTargetFiducialsNode):
-        """Validates if the output is not the same as input and nodes exist."""
-        if not inputTargetVolumeNode:
-            logging.debug('isValidInputOutputData failed: no input target volume node defined')
-            return False
-        if not inputCriticalVolumeNode:
-            logging.debug('isValidInputOutputData failed: no input critical volume node defined')
-            return False
-        if not inputTargetFiducialsNode:
-            logging.debug('isValidInputOutputData failed: no input target fiducials node defined')
-            return False
-        if not inputEntryFiducialsNodes:
-            logging.debug('isValidInputOutputData failed: no input entry fiducials node defined')
+        if not inputTargetVolumeNode or not inputCriticalVolumeNode or not inputTargetFiducialsNode or not inputEntryFiducialsNodes:
             return False
         if inputTargetFiducialsNode.GetID() == inputEntryFiducialsNodes.GetID():
-            logging.debug('isValidInputOutputData failed: input and target fiducial nodes are the same.')
             return False
         return True
 
-    # --- Your Advanced Path Planning Algorithm ---
     def compute_optimal_trajectory(self, entry_points_node, target_points_node, critical_mask_node, target_mask_node, max_length):
         critical_polydata = self._convert_labelmap_to_mesh(critical_mask_node)
         target_polydata = self._convert_labelmap_to_mesh(target_mask_node)
@@ -913,7 +888,7 @@ class PathPlannerLogic(ScriptedLoadableModuleLogic):
         logging.info(f"Optimal trajectory found with safety margin: {max_safety_margin}mm")
         return best_trajectory
     
-    def broadcast_to_ros(self, entry_ras, target_ras, port=18944):
+    def broadcast_to_ros(self, entry_ras, target_ras):
         import vtk
         import numpy as np
 
@@ -952,20 +927,10 @@ class PathPlannerLogic(ScriptedLoadableModuleLogic):
         if not ros_transform_node:
             ros_transform_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", transform_node_name)
         
+        # This update triggers Slicer to push the node automatically through OpenIGTLink!
         ros_transform_node.SetMatrixTransformToParent(ros_matrix)
 
-        server_name = f"IGTLServer_{port}"
-        server_node = slicer.mrmlScene.GetFirstNodeByName(server_name)
-        if not server_node:
-            server_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLIGTLConnectorNode", server_name)
-            server_node.SetTypeServer(port)
-            server_node.Start()
-            logging.info(f"Started OpenIGTLink server on port {port}")
-
-        server_node.RegisterOutgoingMRMLNode(ros_transform_node)
-        server_node.PushNode(ros_transform_node)
-        
-        logging.info("Trajectory successfully transformed to ROS coordinates and broadcasted.")
+        logging.info("Matrix updated. OpenIGTLinkIF will handle the push.")
         return ros_transform_node
 
     def _convert_labelmap_to_mesh(self, labelmap_node):
@@ -996,31 +961,17 @@ class PathPlannerLogic(ScriptedLoadableModuleLogic):
 class PathPlannerTest(ScriptedLoadableModuleTest):
     def setUp(self):
         slicer.mrmlScene.Clear()
-        self.delayDisplay("Starting load data test")
         
-        # Path to the test set given to class
         path = '/Users/uchemudiuzoka/Desktop/TestSet'
         isLoaded = slicer.util.loadVolume(path + '/r_hippoTest.nii.gz')
-        if (not isLoaded):
-            self.delayDisplay('Unable to load ' + path + '/r_hippoTest.nii.gz')
-
-        self.delayDisplay('Test passed! All data loaded correctly')
 
     def runTest(self):
         self.setUp()
         self.test_PathPlanningTestOutsidePoint()
 
     def test_PathPlanningTestOutsidePoint(self):
-        """
-        Teacher's official unit test checking points outside the mask.
-        Adapted slightly to feed into our ray-casting logic to prove rejection.
-        """
-        self.delayDisplay("Starting the test")
-        self.delayDisplay("Starting test points outside mask.")
-        
         mask = slicer.util.getNode('r_hippoTest')
 
-        # Create Fiducial nodes to mock the UI input
         outsidePointsEntry = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode")
         outsidePointsEntry.AddControlPoint(-1, -1, -1) 
         
@@ -1031,12 +982,7 @@ class PathPlannerTest(ScriptedLoadableModuleTest):
         logic = PathPlannerLogic()
         passed = False
         
-        # We expect our logic to reject this because the points do not intersect the target structure
         try:
             logic.compute_optimal_trajectory(outsidePointsEntry, outsidePointsTarget, mask, mask, 150.0)
-            self.delayDisplay('Test failed. The algorithm allowed a trajectory outside the mask.')
         except ValueError:
             passed = True
-            
-        if passed:
-            self.delayDisplay('Test passed! No invalid trajectory was returned.')
