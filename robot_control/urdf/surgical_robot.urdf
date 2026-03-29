@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<!-- <?xml version="1.0"?>
 <robot name="myArm">
   <link name="base_link">
     <visual>
@@ -38,5 +38,59 @@
     <child link="tilt_link"/>
     <origin rpy="0 0 0" xyz="0 0 6"/>
     <axis xyz="0 1 0" /> <limit effort="30" velocity="1.0" lower="-1.57" upper="1.57"/>
+  </joint>
+</robot> -->
+
+<?xml version="1.0"?>
+<robot name="myArm">
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="4.0 4.0 1.0"/>
+      </geometry>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <link name="pan_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://robot_control/meshes/Ellipse.dae"/>
+      </geometry>
+      <origin rpy="0 1.57 0" xyz="0 0 0"/> 
+      <material name="blue">
+        <color rgba="0.0 0.0 1.0 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <link name="tilt_link">
+    <visual>
+      <geometry>
+        <cylinder length="2.0" radius="0.5"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 1.0"/>
+      <material name="red">
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
+    </visual>
+  </link>
+  
+  <joint name="pan_joint" type="revolute">
+    <parent link ="base_link"/>
+    <child link="pan_link"/>
+    <origin rpy="0 0 0" xyz="0 0 0.5"/>
+    <axis xyz="0 0 1" /> 
+    <limit effort="30" velocity="1.0" lower="-3.14" upper="3.14"/>
+  </joint>
+
+  <joint name="tilt_joint" type="revolute">
+    <parent link ="pan_link"/>
+    <child link="tilt_link"/>
+    <origin rpy="0 0 0" xyz="0 0 1.0"/>
+    <axis xyz="0 1 0" /> 
+    <limit effort="30" velocity="1.0" lower="-1.57" upper="1.57"/>
   </joint>
 </robot>
