@@ -626,6 +626,7 @@
 #             self.delayDisplay('Test passed! Trajectory was safely rejected.')
 
 import logging
+import math
 import os
 from typing import Annotated, Optional
 
@@ -744,12 +745,65 @@ class PathPlannerWidget(ScriptedLoadableModuleWidget):
         self.targetMaskSelector.setMRMLScene(slicer.mrmlScene)
         parametersFormLayout.addRow("Target Mask: ", self.targetMaskSelector)
 
-        self.maxLengthSpinBox = ctk.ctkDoubleSpinBox()
-        self.maxLengthSpinBox.minimum = 10.0
-        self.maxLengthSpinBox.maximum = 500.0
-        self.maxLengthSpinBox.value = 150.0 
-        self.maxLengthSpinBox.suffix = " mm"
-        parametersFormLayout.addRow("Max Tool Length: ", self.maxLengthSpinBox)
+        trajRangeBox = qt.QWidget()
+        trajRangeLayout = qt.QVBoxLayout(trajRangeBox)
+        self.minLengthSlider = qt.QSlider(qt.Qt.Horizontal)
+        self.minLengthSlider.setMinimum(10)
+        self.minLengthSlider.setMaximum(490)
+        self.minLengthSlider.setValue(40)
+        self.minLengthSlider.setToolTip("Reject trajectories shorter than this (mm).")
+        self.maxLengthSlider = qt.QSlider(qt.Qt.Horizontal)
+        self.maxLengthSlider.setMinimum(20)
+        self.maxLengthSlider.setMaximum(500)
+        self.maxLengthSlider.setValue(150)
+        self.maxLengthSlider.setToolTip("Reject trajectories longer than this (mm).")
+        self.minLengthLabel = qt.QLabel()
+        self.maxLengthLabel = qt.QLabel()
+        for s in (self.minLengthSlider, self.maxLengthSlider):
+            s.setTickPosition(qt.QSlider.TicksBelow)
+            s.setTickInterval(50)
+        self._update_length_labels()
+        self.minLengthSlider.connect("valueChanged(int)", self._on_length_slider_changed)
+        self.maxLengthSlider.connect("valueChanged(int)", self._on_length_slider_changed)
+        trajRangeLayout.addWidget(qt.QLabel("Trajectory length range (mm) — min"))
+        trajRangeLayout.addWidget(self.minLengthSlider)
+        trajRangeLayout.addWidget(self.minLengthLabel)
+        trajRangeLayout.addWidget(qt.QLabel("Trajectory length range (mm) — max"))
+        trajRangeLayout.addWidget(self.maxLengthSlider)
+        trajRangeLayout.addWidget(self.maxLengthLabel)
+        parametersFormLayout.addRow("Trajectory length: ", trajRangeBox)
+
+        self.cortexSelector = slicer.qMRMLNodeComboBox()
+        self.cortexSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
+        self.cortexSelector.selectNodeUponCreation = False
+        self.cortexSelector.noneEnabled = True
+        self.cortexSelector.addEnabled = False
+        self.cortexSelector.removeEnabled = False
+        self.cortexSelector.setMRMLScene(slicer.mrmlScene)
+        self.cortexSelector.setToolTip(
+            "Optional: first fiducial = point on cortex (or near entry) to set approach direction in the plane "
+            "perpendicular to the trajectory (hippocampus entry side)."
+        )
+        parametersFormLayout.addRow("Cortex reference (optional): ", self.cortexSelector)
+
+        self.cortexRollSlider = qt.QSlider(qt.Qt.Horizontal)
+        self.cortexRollSlider.setMinimum(-180)
+        self.cortexRollSlider.setMaximum(180)
+        self.cortexRollSlider.setValue(0)
+        self.cortexRollSlider.setToolTip(
+            "Extra roll (degrees) about the trajectory axis after using the cortex reference — "
+            "fine-tunes tool orientation toward hippocampus."
+        )
+        self.cortexRollLabel = qt.QLabel("0°")
+        self.cortexRollSlider.connect(
+            "valueChanged(int)", lambda v: self.cortexRollLabel.setText(f"{v}°")
+        )
+        rollRow = qt.QHBoxLayout()
+        rollRow.addWidget(self.cortexRollSlider)
+        rollRow.addWidget(self.cortexRollLabel)
+        rollWrap = qt.QWidget()
+        rollWrap.setLayout(rollRow)
+        parametersFormLayout.addRow("Cortex / approach roll: ", rollWrap)
 
         self.applyButton = qt.QPushButton("Compute Optimal Trajectory")
         self.applyButton.enabled = True
@@ -762,12 +816,25 @@ class PathPlannerWidget(ScriptedLoadableModuleWidget):
         self.applyButton.connect('clicked(bool)', self.onApplyButton)
         self.layout.addStretch(1)
 
+    def _update_length_labels(self):
+        self.minLengthLabel.setText(f"Min = {self.minLengthSlider.value} mm")
+        self.maxLengthLabel.setText(f"Max = {self.maxLengthSlider.value} mm")
+
+    def _on_length_slider_changed(self, _value):
+        if self.minLengthSlider.value >= self.maxLengthSlider.value:
+            if self.sender() == self.minLengthSlider:
+                self.maxLengthSlider.setValue(self.minLengthSlider.value + 5)
+            else:
+                self.minLengthSlider.setValue(max(10, self.maxLengthSlider.value - 5))
+        self._update_length_labels()
+
     def onApplyButton(self):
         entry_node = self.entrySelector.currentNode()
         target_node = self.targetSelector.currentNode()
         critical_node = self.criticalMaskSelector.currentNode()
         target_mask_node = self.targetMaskSelector.currentNode()
-        max_length = self.maxLengthSpinBox.value
+        min_length = float(self.minLengthSlider.value)
+        max_length = float(self.maxLengthSlider.value)
 
         if not self.logic.isValidInputOutputData(target_mask_node, critical_node, entry_node, target_node):
             self.resultLabel.setText("Error: Invalid inputs. Check nodes.")
@@ -782,7 +849,7 @@ class PathPlannerWidget(ScriptedLoadableModuleWidget):
 
         try:
             best_trajectory = self.logic.compute_optimal_trajectory(
-                entry_node, target_node, critical_node, target_mask_node, max_length
+                entry_node, target_node, critical_node, target_mask_node, max_length, min_length
             )
             
             line_node_name = "Calculated_Trajectory"
@@ -793,9 +860,18 @@ class PathPlannerWidget(ScriptedLoadableModuleWidget):
             line_node.AddControlPoint(vtk.vtkVector3d(best_trajectory[0][0], best_trajectory[0][1], best_trajectory[0][2]))
             line_node.AddControlPoint(vtk.vtkVector3d(best_trajectory[1][0], best_trajectory[1][1], best_trajectory[1][2]))
             line_node.GetDisplayNode().SetSelectedColor(0, 1, 0)
-            
-            self.logic.broadcast_to_ros(best_trajectory[0], best_trajectory[1])
-            
+
+            cortex_node = self.cortexSelector.currentNode()
+            cortex_pt = None
+            if cortex_node and cortex_node.GetNumberOfControlPoints() > 0:
+                p = [0.0, 0.0, 0.0]
+                cortex_node.GetNthControlPointPosition(0, p)
+                cortex_pt = p
+            roll_deg = float(self.cortexRollSlider.value)
+            self.logic.broadcast_to_ros(
+                best_trajectory[0], best_trajectory[1], cortex_point_ras=cortex_pt, cortex_roll_deg=roll_deg
+            )
+
             entry_str = f"({best_trajectory[0][0]:.2f}, {best_trajectory[0][1]:.2f}, {best_trajectory[0][2]:.2f})"
             target_str = f"({best_trajectory[1][0]:.2f}, {best_trajectory[1][1]:.2f}, {best_trajectory[1][2]:.2f})"
             self.resultLabel.setText(f"Success! Updated Trajectory_ROS_Transform.\nEntry: {entry_str}\nTarget: {target_str}")
@@ -828,7 +904,9 @@ class PathPlannerLogic(ScriptedLoadableModuleLogic):
             return False
         return True
 
-    def compute_optimal_trajectory(self, entry_points_node, target_points_node, critical_mask_node, target_mask_node, max_length):
+    def compute_optimal_trajectory(
+        self, entry_points_node, target_points_node, critical_mask_node, target_mask_node, max_length, min_length=0.0
+    ):
         critical_polydata = self._convert_labelmap_to_mesh(critical_mask_node)
         target_polydata = self._convert_labelmap_to_mesh(target_mask_node)
 
@@ -853,7 +931,7 @@ class PathPlannerLogic(ScriptedLoadableModuleLogic):
                 target_points_node.GetNthControlPointPosition(j, target_pos)
 
                 distance = np.linalg.norm(np.array(entry_pos) - np.array(target_pos))
-                if distance > max_length:
+                if distance < min_length or distance > max_length:
                     continue
 
                 critical_intersections = vtk.vtkPoints()
@@ -888,22 +966,44 @@ class PathPlannerLogic(ScriptedLoadableModuleLogic):
         logging.info(f"Optimal trajectory found with safety margin: {max_safety_margin}mm")
         return best_trajectory
     
-    def broadcast_to_ros(self, entry_ras, target_ras):
+    def broadcast_to_ros(self, entry_ras, target_ras, cortex_point_ras=None, cortex_roll_deg=0.0):
         import vtk
         import numpy as np
 
-        entry = np.array(entry_ras)
-        target = np.array(target_ras)
+        entry = np.array(entry_ras, dtype=float)
+        target = np.array(target_ras, dtype=float)
         z_vec = target - entry
         distance = np.linalg.norm(z_vec)
         if distance == 0:
             raise ValueError("Entry and Target points are identical.")
-        z_vec = z_vec / distance 
+        z_vec = z_vec / distance
 
-        arbitrary_vec = np.array([1.0, 0.0, 0.0]) if abs(z_vec[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
-        y_vec = np.cross(z_vec, arbitrary_vec)
-        y_vec = y_vec / np.linalg.norm(y_vec)
-        x_vec = np.cross(y_vec, z_vec)
+        if cortex_point_ras is not None:
+            cref = np.array(cortex_point_ras, dtype=float) - entry
+            cref_perp = cref - float(np.dot(cref, z_vec)) * z_vec
+            ncp = np.linalg.norm(cref_perp)
+            if ncp > 1e-6:
+                x_vec = cref_perp / ncp
+                y_vec = np.cross(z_vec, x_vec)
+                y_vec = y_vec / (np.linalg.norm(y_vec) + 1e-12)
+                x_vec = np.cross(y_vec, z_vec)
+                x_vec = x_vec / (np.linalg.norm(x_vec) + 1e-12)
+            else:
+                arbitrary_vec = np.array([1.0, 0.0, 0.0]) if abs(z_vec[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+                y_vec = np.cross(z_vec, arbitrary_vec)
+                y_vec = y_vec / (np.linalg.norm(y_vec) + 1e-12)
+                x_vec = np.cross(y_vec, z_vec)
+        else:
+            arbitrary_vec = np.array([1.0, 0.0, 0.0]) if abs(z_vec[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+            y_vec = np.cross(z_vec, arbitrary_vec)
+            y_vec = y_vec / (np.linalg.norm(y_vec) + 1e-12)
+            x_vec = np.cross(y_vec, z_vec)
+
+        th = math.radians(float(cortex_roll_deg))
+        c, s = math.cos(th), math.sin(th)
+        x_rot = c * x_vec - s * y_vec
+        y_rot = s * x_vec + c * y_vec
+        x_vec, y_vec = x_rot, y_rot
 
         ras_matrix = vtk.vtkMatrix4x4()
         for i in range(3):
@@ -983,6 +1083,6 @@ class PathPlannerTest(ScriptedLoadableModuleTest):
         passed = False
         
         try:
-            logic.compute_optimal_trajectory(outsidePointsEntry, outsidePointsTarget, mask, mask, 150.0)
+            logic.compute_optimal_trajectory(outsidePointsEntry, outsidePointsTarget, mask, mask, 150.0, 0.0)
         except ValueError:
             passed = True

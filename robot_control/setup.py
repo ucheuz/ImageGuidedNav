@@ -16,12 +16,18 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         
         # FIXED: Automatically grabs all URDF files (fixes the name mismatch)
-        (os.path.join('share', package_name, 'urdf'), glob('urdf/*.urdf')),
+        (
+            os.path.join('share', package_name, 'urdf'),
+            glob('urdf/*.urdf')
+            + glob('urdf/*.xacro')
+            + glob('urdf/*.trans')
+            + glob('urdf/*.gazebo'),
+        ),
         
         # FIXED: THE MISSING MESHES FOLDER! This is why the robot was invisible.
         (os.path.join('share', package_name, 'meshes'), glob('meshes/*')),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'ikpy', 'numpy'],
     zip_safe=True,
     maintainer='Kosiasochukwu Uchemudi Uzoka',
     maintainer_email='k22030155@kcl.ac.uk',
