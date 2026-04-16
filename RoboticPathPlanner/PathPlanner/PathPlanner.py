@@ -395,13 +395,209 @@ class PathPlannerLogic(ScriptedLoadableModuleLogic):
         logging.info(f"Optimal trajectory found with safety margin: {max_safety_margin}mm")
         return best_trajectory
     
+    # def broadcast_to_ros(self, entry_ras, target_ras, cortex_point_ras=None, cortex_roll_deg=0.0):
+    #     import vtk
+    #     import numpy as np
+
+    #     entry = np.array(entry_ras, dtype=float)
+    #     target = np.array(target_ras, dtype=float)
+    #     z_vec = target - entry
+    #     distance = np.linalg.norm(z_vec)
+    #     if distance == 0:
+    #         raise ValueError("Entry and Target points are identical.")
+    #     z_vec = z_vec / distance
+
+    #     if cortex_point_ras is not None:
+    #         cref = np.array(cortex_point_ras, dtype=float) - entry
+    #         cref_perp = cref - float(np.dot(cref, z_vec)) * z_vec
+    #         ncp = np.linalg.norm(cref_perp)
+    #         if ncp > 1e-6:
+    #             x_vec = cref_perp / ncp
+    #             y_vec = np.cross(z_vec, x_vec)
+    #             y_vec = y_vec / (np.linalg.norm(y_vec) + 1e-12)
+    #             x_vec = np.cross(y_vec, z_vec)
+    #             x_vec = x_vec / (np.linalg.norm(x_vec) + 1e-12)
+    #         else:
+    #             arbitrary_vec = np.array([1.0, 0.0, 0.0]) if abs(z_vec[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    #             y_vec = np.cross(z_vec, arbitrary_vec)
+    #             y_vec = y_vec / (np.linalg.norm(y_vec) + 1e-12)
+    #             x_vec = np.cross(y_vec, z_vec)
+    #     else:
+    #         arbitrary_vec = np.array([1.0, 0.0, 0.0]) if abs(z_vec[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    #         y_vec = np.cross(z_vec, arbitrary_vec)
+    #         y_vec = y_vec / (np.linalg.norm(y_vec) + 1e-12)
+    #         x_vec = np.cross(y_vec, z_vec)
+
+    #     th = math.radians(float(cortex_roll_deg))
+    #     c, s = math.cos(th), math.sin(th)
+    #     x_rot = c * x_vec - s * y_vec
+    #     y_rot = s * x_vec + c * y_vec
+    #     x_vec, y_vec = x_rot, y_rot
+
+    #     # ras_matrix = vtk.vtkMatrix4x4()
+    #     # for i in range(3):
+    #     #     ras_matrix.SetElement(i, 0, x_vec[i])
+    #     #     ras_matrix.SetElement(i, 1, y_vec[i])
+    #     #     ras_matrix.SetElement(i, 2, z_vec[i])
+    #     #     ras_matrix.SetElement(i, 3, entry[i])
+
+    #     # --- NEW: 150mm Pre-Surgical Approach Offset ---
+    #     # z_vec points FROM entry TO target, so subtracting it pulls the robot BACK along the trajectory
+    #     approach_distance = 150.0 
+    #     approach_point = entry - (z_vec * approach_distance)
+
+    #     ras_matrix = vtk.vtkMatrix4x4()
+    #     for i in range(3):
+    #         ras_matrix.SetElement(i, 0, x_vec[i])
+    #         ras_matrix.SetElement(i, 1, y_vec[i])
+    #         ras_matrix.SetElement(i, 2, z_vec[i])
+    #         # Set the translation column to the safe approach point instead of the entry point
+    #         ras_matrix.SetElement(i, 3, approach_point[i])
+    #     # -----------------------------------------------
+
+    #     ras_to_ros = vtk.vtkMatrix4x4()
+    #     ras_to_ros.Identity()
+    #     ras_to_ros.SetElement(0, 0, 0.0)
+    #     ras_to_ros.SetElement(0, 1, 1.0)
+    #     ras_to_ros.SetElement(1, 0, -1.0)
+    #     ras_to_ros.SetElement(1, 1, 0.0)
+
+    #     ros_matrix = vtk.vtkMatrix4x4()
+    #     vtk.vtkMatrix4x4.Multiply4x4(ras_to_ros, ras_matrix, ros_matrix)
+
+    #     transform_node_name = "Trajectory_ROS_Transform"
+    #     ros_transform_node = slicer.mrmlScene.GetFirstNodeByName(transform_node_name)
+    #     if not ros_transform_node:
+    #         ros_transform_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", transform_node_name)
+        
+    #     ros_transform_node.SetMatrixTransformToParent(ros_matrix)
+
+    #     # Find the connector you manually turned ON
+    #     cNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLIGTLConnectorNode")
+    #     active_connector = None
+    #     for i in range(cNodes.GetNumberOfItems()):
+    #         node = cNodes.GetItemAsObject(i)
+    #         if node.GetState() == 2: # State 2 = Connected/ON
+    #             active_connector = node
+    #             break
+
+    #     if active_connector:
+    #         # This ensures the node is registered for broadcast
+    #         active_connector.RegisterOutgoingMRMLNode(ros_transform_node)
+    #         # This forces the data out immediately
+    #         active_connector.PushNode(ros_transform_node)
+    #         logging.info(f"Pushed {transform_node_name} to {active_connector.GetName()}")
+    #     else:
+    #         logging.error("No active OpenIGTLink connector found. Please turn one ON in Slicer.")
+
+    #     return ros_transform_node
+
+    # def broadcast_to_ros(self, entry_ras, target_ras, cortex_point_ras=None, cortex_roll_deg=0.0):
+    #     import vtk
+    #     import numpy as np
+
+    #     entry = np.array(entry_ras, dtype=float)
+    #     target = np.array(target_ras, dtype=float)
+        
+    #     # --- FIX 1: FLIP THE Z-VECTOR ---
+    #     # Your robot's tool Z-axis is inverted in the URDF. 
+    #     # Changing this to 'entry - target' flips the orientation 180 degrees so the grippers point DOWN.
+    #     z_vec = entry - target
+        
+    #     distance = np.linalg.norm(z_vec)
+    #     if distance == 0:
+    #         raise ValueError("Entry and Target points are identical.")
+    #     z_vec = z_vec / distance
+
+    #     if cortex_point_ras is not None:
+    #         cref = np.array(cortex_point_ras, dtype=float) - entry
+    #         cref_perp = cref - float(np.dot(cref, z_vec)) * z_vec
+    #         ncp = np.linalg.norm(cref_perp)
+    #         if ncp > 1e-6:
+    #             x_vec = cref_perp / ncp
+    #             y_vec = np.cross(z_vec, x_vec)
+    #             y_vec = y_vec / (np.linalg.norm(y_vec) + 1e-12)
+    #             x_vec = np.cross(y_vec, z_vec)
+    #             x_vec = x_vec / (np.linalg.norm(x_vec) + 1e-12)
+    #         else:
+    #             arbitrary_vec = np.array([1.0, 0.0, 0.0]) if abs(z_vec[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    #             y_vec = np.cross(z_vec, arbitrary_vec)
+    #             y_vec = y_vec / (np.linalg.norm(y_vec) + 1e-12)
+    #             x_vec = np.cross(y_vec, z_vec)
+    #     else:
+    #         arbitrary_vec = np.array([1.0, 0.0, 0.0]) if abs(z_vec[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    #         y_vec = np.cross(z_vec, arbitrary_vec)
+    #         y_vec = y_vec / (np.linalg.norm(y_vec) + 1e-12)
+    #         x_vec = np.cross(y_vec, z_vec)
+
+    #     th = math.radians(float(cortex_roll_deg))
+    #     c, s = math.cos(th), math.sin(th)
+    #     x_rot = c * x_vec - s * y_vec
+    #     y_rot = s * x_vec + c * y_vec
+    #     x_vec, y_vec = x_rot, y_rot
+
+    #     # --- FIX 2: REVERSE THE OFFSET DIRECTION ---
+    #     # Because z_vec now points UP, we ADD it to the entry point to move 150mm UP into the air.
+    #     approach_distance = 150.0 
+    #     approach_point = entry + (z_vec * approach_distance)
+
+    #     ras_matrix = vtk.vtkMatrix4x4()
+    #     for i in range(3):
+    #         ras_matrix.SetElement(i, 0, x_vec[i])
+    #         ras_matrix.SetElement(i, 1, y_vec[i])
+    #         ras_matrix.SetElement(i, 2, z_vec[i])
+    #         # Set the translation column to the safe approach point
+    #         ras_matrix.SetElement(i, 3, approach_point[i])
+    #     # -----------------------------------------------
+
+    #     ras_to_ros = vtk.vtkMatrix4x4()
+    #     ras_to_ros.Identity()
+    #     ras_to_ros.SetElement(0, 0, 0.0)
+    #     ras_to_ros.SetElement(0, 1, 1.0)
+    #     ras_to_ros.SetElement(1, 0, -1.0)
+    #     ras_to_ros.SetElement(1, 1, 0.0)
+
+    #     ros_matrix = vtk.vtkMatrix4x4()
+    #     vtk.vtkMatrix4x4.Multiply4x4(ras_to_ros, ras_matrix, ros_matrix)
+
+    #     transform_node_name = "Trajectory_ROS_Transform"
+    #     ros_transform_node = slicer.mrmlScene.GetFirstNodeByName(transform_node_name)
+    #     if not ros_transform_node:
+    #         ros_transform_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", transform_node_name)
+        
+    #     ros_transform_node.SetMatrixTransformToParent(ros_matrix)
+
+    #     # Find the connector you manually turned ON
+    #     cNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLIGTLConnectorNode")
+    #     active_connector = None
+    #     for i in range(cNodes.GetNumberOfItems()):
+    #         node = cNodes.GetItemAsObject(i)
+    #         if node.GetState() == 2: # State 2 = Connected/ON
+    #             active_connector = node
+    #             break
+
+    #     if active_connector:
+    #         active_connector.RegisterOutgoingMRMLNode(ros_transform_node)
+    #         active_connector.PushNode(ros_transform_node)
+    #         logging.info(f"Pushed {transform_node_name} to {active_connector.GetName()}")
+    #     else:
+    #         logging.error("No active OpenIGTLink connector found. Please turn one ON in Slicer.")
+
+    #     return ros_transform_node
+
     def broadcast_to_ros(self, entry_ras, target_ras, cortex_point_ras=None, cortex_roll_deg=0.0):
         import vtk
         import numpy as np
+        import logging
+        import math
 
         entry = np.array(entry_ras, dtype=float)
         target = np.array(target_ras, dtype=float)
+        
+        # --- FIX 1: REVERT TO ORIGINAL CORRECT ORIENTATION ---
+        # This points perfectly from outside the skull into the hippocampus
         z_vec = target - entry
+        
         distance = np.linalg.norm(z_vec)
         if distance == 0:
             raise ValueError("Entry and Target points are identical.")
@@ -434,12 +630,19 @@ class PathPlannerLogic(ScriptedLoadableModuleLogic):
         y_rot = s * x_vec + c * y_vec
         x_vec, y_vec = x_rot, y_rot
 
+        # --- FIX 2: THE REACHABLE OFFSET ---
+        # 80mm pulls it out of the brain, but keeps it close enough so the joints don't fail (no singularity)
+        approach_distance = 110.0 
+        approach_point = entry - (z_vec * approach_distance)
+
         ras_matrix = vtk.vtkMatrix4x4()
         for i in range(3):
             ras_matrix.SetElement(i, 0, x_vec[i])
             ras_matrix.SetElement(i, 1, y_vec[i])
             ras_matrix.SetElement(i, 2, z_vec[i])
-            ras_matrix.SetElement(i, 3, entry[i])
+            # Set the translation column to the safe approach point
+            ras_matrix.SetElement(i, 3, approach_point[i])
+        # -----------------------------------------------
 
         ras_to_ros = vtk.vtkMatrix4x4()
         ras_to_ros.Identity()
@@ -468,9 +671,7 @@ class PathPlannerLogic(ScriptedLoadableModuleLogic):
                 break
 
         if active_connector:
-            # This ensures the node is registered for broadcast
             active_connector.RegisterOutgoingMRMLNode(ros_transform_node)
-            # This forces the data out immediately
             active_connector.PushNode(ros_transform_node)
             logging.info(f"Pushed {transform_node_name} to {active_connector.GetName()}")
         else:
