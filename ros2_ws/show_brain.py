@@ -5,7 +5,6 @@ from visualization_msgs.msg import Marker, MarkerArray
 class AnatomyPublisher(Node):
     def __init__(self):
         super().__init__('anatomy_publisher')
-        # Changed to MarkerArray to handle multiple meshes
         self.publisher_ = self.create_publisher(MarkerArray, 'registered_anatomy_v2', 10)
         self.timer = self.create_timer(1.0, self.publish_meshes)
         self.get_logger().info("Publishing Fusion-Registered Brain and Target Hippocampus...")
@@ -14,7 +13,7 @@ class AnatomyPublisher(Node):
         marker_array = MarkerArray()
 
         # ==========================================
-        # 1. THE CORTEX (Glass Green)
+        # 1. THE CORTEX 
         # ==========================================
         brain = Marker()
         brain.header.frame_id = "base_link" 
@@ -29,26 +28,26 @@ class AnatomyPublisher(Node):
         brain.scale.y = 1.0
         brain.scale.z = 1.0
         
-        # Ghostly Green so you can see inside
+
         brain.color.r = 0.0
         brain.color.g = 1.0
         brain.color.b = 0.5
         brain.color.a = 0.15 
         
-        # YOUR FUSION COORDINATES
+
         brain.pose.position.x = 0.127
         brain.pose.position.y = -0.207
         brain.pose.position.z = 0.130
         brain.pose.orientation.w = 1.0
 
         # ==========================================
-        # 2. THE HIPPOCAMPUS (Solid Crimson Red)
+        # 2. THE HIPPOCAMPUS 
         # ==========================================
         hippo = Marker()
         hippo.header.frame_id = "base_link"
         hippo.header.stamp = self.get_clock().now().to_msg()
         hippo.ns = "anatomy"
-        hippo.id = 1  # Must be different from the brain ID!
+        hippo.id = 1  
         hippo.type = Marker.SPHERE
         hippo.action = Marker.ADD
         hippo.mesh_resource = "file:///home/ros2box/ros2_ws/Segment_1.stl"
@@ -57,13 +56,11 @@ class AnatomyPublisher(Node):
         hippo.scale.y = 0.02
         hippo.scale.z = 0.02
         
-        # High Visibility Red
         hippo.color.r = 1.0
         hippo.color.g = 0.0
         hippo.color.b = 0.15
         hippo.color.a = 0.95 
-        
-        # MUST MATCH THE BRAIN COORDINATES EXACTLY
+
         hippo.pose.position.x = 0.127
         hippo.pose.position.y = -0.207
         hippo.pose.position.z = 0.130
