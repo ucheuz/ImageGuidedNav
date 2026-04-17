@@ -1,0 +1,25 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: robot_control
+    relative_path: urdf/Robotic.xacro
+  srdf:
+    relative_path: config/Robotic.srdf
+  package_settings:
+    author_name: Kosiasochukwu Uzoka
+    author_email: kosiasochukwu.uzoka@kcl.ac.uk
+    generated_timestamp: 1776084430
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
