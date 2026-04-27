@@ -22,7 +22,7 @@ class SlicerToMoveItListener(Node):
         self._action_client = ActionClient(self, MoveGroup, 'move_action')
         
         # Establish OpenIGTLink connection to Slicer
-        self.client = pyigtl.OpenIGTLinkClient(host="192.168.64.1", port=18945)
+        self.client = pyigtl.OpenIGTLinkClient(host="127.0.0.1", port=18945)
         self.client.start()
         
         self.timer = self.create_timer(0.1, self.listen_for_slicer_data)

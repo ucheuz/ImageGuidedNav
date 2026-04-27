@@ -559,7 +559,7 @@ class PathPlannerTest(ScriptedLoadableModuleTest):
         slicer.mrmlScene.Clear()
         
         # Update path to your BrainPlanning Dataset
-        path = '/Users/uchemudiuzoka/Desktop/TestSet'
+        path = 'C:/Replace_This_With_Your_Desktop_Path/BrainPlanning'
         volumePath = os.path.join(path, 'r_hippoTest.nii.gz')
         
         if os.path.exists(volumePath):

@@ -59,6 +59,7 @@ Open a terminal in your Ubuntu ROS 2 environment, source your workspace, and exe
 
 *Note: This launch file includes an 8-second `TimerAction` delay for the listener node to ensure MoveIt 2 and RViz are fully initialized before attempting the OpenIGTLink handshake.*
 
+*Note regarding IP Address:* The ROS 2 listener is configured to connect to Slicer on localhost (`127.0.0.1`). If you are running Slicer on a different machine or VM than ROS 2, please update the `host` IP address in `igtl_listener.py` before launching.
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/ros2_ws/install/setup.bash
